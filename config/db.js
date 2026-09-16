@@ -1,16 +1,16 @@
-const { Pool } = require("pg");
-
+const { Sequelize } = require("sequelize");
 require("dotenv").config();
 
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  user: process.env.DB_USER,
-  database: process.env.DB_NAME,
-  password: process.env.DB_PASS,
-});
+const sequelize = new Sequelize(
+  process.env.DB_NAME,
+  process.env.DB_USER,
+  process.env.DB_PASS,
+  {
+    host: process.env.DB_HOST || "localhost",
+    port: Number(process.env.DB_PORT) || 5432,
+    dialect: "postgres",
+    logging: false,
+  },
+);
 
-pool.on("error", (err) => {
-  console.log("unexpected error occured  :" + err);
-});
-module.exports = pool;
+module.exports = sequelize;
