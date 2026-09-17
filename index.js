@@ -6,7 +6,6 @@ const inventoryRoutes = require("./routes/inventoryRoutes");
 const dailyInventoryUsageRoutes = require("./routes/dailyInventoryUsageRoutes");
 
 const app = express();
-const cors = require("cors");
 
 app.use(
   cors({

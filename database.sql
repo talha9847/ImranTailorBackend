@@ -9,25 +9,25 @@ CREATE TABLE inventory (
 );
 
 CREATE TABLE daily_inventory_usage (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    id SERIAL PRIMARY KEY,
     usage_date DATE NOT NULL UNIQUE,
     total_items INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+
+
 CREATE TABLE daily_inventory_usage_items (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    id BIGSERIAL PRIMARY KEY,
 
     usage_id BIGINT NOT NULL,
-
     inventory_id BIGINT NOT NULL,
 
-    quantity INT NOT NULL DEFAULT 0,
+    quantity INTEGER NOT NULL DEFAULT 0,
 
     buying_price DECIMAL(10,2) NOT NULL DEFAULT 0,
-
     selling_price DECIMAL(10,2) NOT NULL DEFAULT 0,
-
     total_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -42,5 +42,6 @@ CREATE TABLE daily_inventory_usage_items (
         REFERENCES inventory(id)
         ON DELETE RESTRICT,
 
-    UNIQUE (usage_id, inventory_id)
+    CONSTRAINT unique_usage_inventory
+        UNIQUE (usage_id, inventory_id)
 );
