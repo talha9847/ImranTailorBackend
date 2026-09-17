@@ -1,6 +1,6 @@
 const DailyInventoryUsage = require("./DailyInventoryUsage");
 const DailyInventoryUsageItem = require("./DailyInventoryUsageItem");
-const Inventory = require("./inventory");
+const Inventory = require("./Inventory");
 
 // DailyInventoryUsage -> Items
 DailyInventoryUsage.hasMany(DailyInventoryUsageItem, {
