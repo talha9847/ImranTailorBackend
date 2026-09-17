@@ -1,3 +1,5 @@
+const ClothesOrder = require("./ClothesOrder");
+const Customer = require("./Customer");
 const DailyInventoryUsage = require("./DailyInventoryUsage");
 const DailyInventoryUsageItem = require("./DailyInventoryUsageItem");
 const Inventory = require("./Inventory");
@@ -24,9 +26,20 @@ DailyInventoryUsageItem.belongsTo(Inventory, {
   foreignKey: "inventory_id",
   as: "inventory",
 });
+Customer.hasMany(ClothesOrder, {
+  foreignKey: "customer_id",
+  as: "orders",
+});
+
+ClothesOrder.belongsTo(Customer, {
+  foreignKey: "customer_id",
+  as: "customer",
+});
 
 module.exports = {
   Inventory,
   DailyInventoryUsage,
   DailyInventoryUsageItem,
+  Customer,
+  ClothesOrder,
 };

@@ -4,6 +4,8 @@ const pool = require("./config/db");
 require("dotenv").config();
 const inventoryRoutes = require("./routes/inventoryRoutes");
 const dailyInventoryUsageRoutes = require("./routes/dailyInventoryUsageRoutes");
+const clothesRoutes = require("./routes/clothesRoutes");
+const dashboardRoutes = require("./routes/dashboardRoutes");
 
 const app = express();
 
@@ -20,6 +22,8 @@ app.use(
 app.use(express.json());
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/inventory-usage", dailyInventoryUsageRoutes);
+app.use("/api/clothes", clothesRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 app.get("/", (req, res) => {
   res.status(200).json({ message: "server is running" });
 });

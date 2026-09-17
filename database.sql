@@ -45,3 +45,41 @@ CREATE TABLE daily_inventory_usage_items (
     CONSTRAINT unique_usage_inventory
         UNIQUE (usage_id, inventory_id)
 );
+
+
+CREATE TABLE customers (
+    id BIGSERIAL PRIMARY KEY,
+
+    customer_name VARCHAR(150) NOT NULL,
+    contact VARCHAR(20) NOT NULL,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+
+
+CREATE TABLE clothes_orders (
+    id BIGSERIAL PRIMARY KEY,
+
+    customer_id BIGINT NOT NULL,
+
+    cloth_photo TEXT,
+    note_photo TEXT,
+
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    remainder_date DATE,
+    delivery_date DATE,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_clothes_orders_customer
+        FOREIGN KEY (customer_id)
+        REFERENCES customers(id)
+        ON DELETE RESTRICT,
+
+    CONSTRAINT chk_clothes_orders_status
+        CHECK (status IN ('pending', 'ready', 'delivered'))
+);
