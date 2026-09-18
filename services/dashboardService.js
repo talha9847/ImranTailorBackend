@@ -1,18 +1,20 @@
-// =========================================================
-// GET DASHBOARD DATA
-// =========================================================
-
 const ClothesOrder = require("../models/ClothesOrder");
+const Customer = require("../models/Customer");
+const { getDrivePhotoUrls } = require("./clothesService");
 
 async function getDashboardData() {
   try {
     const clothes = await ClothesOrder.findAll({
       order: [["id", "DESC"]],
-    });
 
-    // -------------------------------------------------------
-    // SUMMARY
-    // -------------------------------------------------------
+      include: [
+        {
+          model: Customer,
+          as: "customer",
+          attributes: ["id", "customer_name", "contact"],
+        },
+      ],
+    });
 
     const activeClothes = clothes.filter((item) => item.status !== "delivered");
 
@@ -20,10 +22,9 @@ async function getDashboardData() {
 
     const ready = clothes.filter((item) => item.status === "ready");
 
-    // -------------------------------------------------------
-    // TODAY
-    // -------------------------------------------------------
-
+    // -----------------------------
+    // TODAY YYYY-MM-DD
+    // -----------------------------
     const today = new Date();
 
     const todayValue = [
@@ -32,50 +33,36 @@ async function getDashboardData() {
       String(today.getDate()).padStart(2, "0"),
     ].join("-");
 
-    // -------------------------------------------------------
-    // REMINDERS
-    // -------------------------------------------------------
-
     const passed = [];
     const todayReminders = [];
     const upcoming = [];
 
+    // -----------------------------
+    // BUILD REMINDER DATA
+    // -----------------------------
     clothes.forEach((item) => {
-      // Delivered orders are not active reminders.
-      if (item.status === "delivered") {
-        return;
-      }
-
       if (!item.remainder_date) {
         return;
       }
 
       const reminderDate = String(item.remainder_date).slice(0, 10);
 
-      /*
-       * IMPORTANT:
-       *
-       * Keep cloth_photo and note_photo exactly as they
-       * come from Clothes service/model.
-       *
-       * They contain:
-       * {
-       *   id,
-       *   thumbnail,
-       *   url
-       * }
-       *
-       * Dashboard.jsx will use thumbnail for display.
-       */
+      const customer = item.customer || {};
 
       const reminderItem = {
         id: item.id,
 
-        customer_name: item.customer_name,
-        contact: item.contact,
+        customer_id: customer.id || null,
 
-        cloth_photo: item.cloth_photo,
-        note_photo: item.note_photo,
+        customer_name: customer.customer_name || item.customer_name || "",
+
+        contact: customer.contact || item.contact || "",
+
+        // IMPORTANT:
+        // These are converted into the same photo object
+        // used by Clothes.jsx
+        cloth_photo: getDrivePhotoUrls(item.cloth_photo),
+        note_photo: getDrivePhotoUrls(item.note_photo),
 
         remainder_date: item.remainder_date,
         delivery_date: item.delivery_date,
@@ -83,7 +70,10 @@ async function getDashboardData() {
         status: item.status,
       };
 
-      if (reminderDate < todayValue) {
+      // ---------------------------------
+      // PASSED + STILL PENDING
+      // ---------------------------------
+      if (reminderDate < todayValue && item.status === "pending") {
         passed.push({
           ...reminderItem,
           reminder_status: "passed",
@@ -92,7 +82,11 @@ async function getDashboardData() {
         return;
       }
 
-      if (reminderDate === todayValue) {
+      // ---------------------------------
+      // REMINDER IS TODAY
+      // Show every non-delivered order
+      // ---------------------------------
+      if (reminderDate === todayValue && item.status !== "delivered") {
         todayReminders.push({
           ...reminderItem,
           reminder_status: "today",
@@ -101,31 +95,44 @@ async function getDashboardData() {
         return;
       }
 
-      upcoming.push({
-        ...reminderItem,
-        reminder_status: "upcoming",
-      });
+      // ---------------------------------
+      // UPCOMING
+      // Keep this for dashboard count
+      // but don't display it in reminder list
+      // ---------------------------------
+      if (reminderDate > todayValue && item.status !== "delivered") {
+        upcoming.push({
+          ...reminderItem,
+          reminder_status: "upcoming",
+        });
+      }
     });
 
-    // -------------------------------------------------------
+    // -----------------------------
     // SORT
-    // -------------------------------------------------------
+    // -----------------------------
 
-    passed.sort(
-      (a, b) => new Date(a.remainder_date) - new Date(b.remainder_date),
-    );
+    passed.sort((a, b) => {
+      return String(a.remainder_date)
+        .slice(0, 10)
+        .localeCompare(String(b.remainder_date).slice(0, 10));
+    });
 
-    todayReminders.sort(
-      (a, b) => new Date(a.delivery_date || 0) - new Date(b.delivery_date || 0),
-    );
+    todayReminders.sort((a, b) => {
+      return String(a.delivery_date || "")
+        .slice(0, 10)
+        .localeCompare(String(b.delivery_date || "").slice(0, 10));
+    });
 
-    upcoming.sort(
-      (a, b) => new Date(a.remainder_date) - new Date(b.remainder_date),
-    );
+    upcoming.sort((a, b) => {
+      return String(a.remainder_date)
+        .slice(0, 10)
+        .localeCompare(String(b.remainder_date).slice(0, 10));
+    });
 
-    // -------------------------------------------------------
+    // -----------------------------
     // RESPONSE
-    // -------------------------------------------------------
+    // -----------------------------
 
     return {
       summary: {
@@ -141,10 +148,14 @@ async function getDashboardData() {
       reminders: {
         passed,
         today: todayReminders,
+
+        // We keep this for the summary count,
+        // but Dashboard.jsx won't display these.
         upcoming,
       },
     };
   } catch (error) {
+    console.error("Dashboard service error:", error);
     throw error;
   }
 }

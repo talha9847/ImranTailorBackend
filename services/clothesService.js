@@ -325,4 +325,5 @@ module.exports = {
   createClothes,
   updateClothes,
   updateClothesStatus,
+  getDrivePhotoUrls,
 };
