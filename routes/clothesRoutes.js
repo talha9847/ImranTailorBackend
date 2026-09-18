@@ -10,31 +10,13 @@ router.get("/getClothesById/:id", clothesController.getClothesById);
 
 router.post(
   "/createClothes",
-  uploadClothesImages.fields([
-    {
-      name: "cloth_photo",
-      maxCount: 1,
-    },
-    {
-      name: "note_photo",
-      maxCount: 1,
-    },
-  ]),
+  uploadClothesImages.any(),
   clothesController.createClothes,
 );
 
 router.put(
   "/updateClothes/:id",
-  uploadClothesImages.fields([
-    {
-      name: "cloth_photo",
-      maxCount: 1,
-    },
-    {
-      name: "note_photo",
-      maxCount: 1,
-    },
-  ]),
+  uploadClothesImages.any(),
   clothesController.updateClothes,
 );
 

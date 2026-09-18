@@ -58,14 +58,11 @@ CREATE TABLE customers (
 );
 
 
-
-
 CREATE TABLE clothes_orders (
     id BIGSERIAL PRIMARY KEY,
 
     customer_id BIGINT NOT NULL,
 
-    cloth_photo TEXT,
     note_photo TEXT,
 
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
@@ -82,4 +79,32 @@ CREATE TABLE clothes_orders (
 
     CONSTRAINT chk_clothes_orders_status
         CHECK (status IN ('pending', 'ready', 'delivered'))
+);
+
+
+
+CREATE TABLE order_clothes (
+    id BIGSERIAL PRIMARY KEY,
+
+    order_id BIGINT NOT NULL,
+
+    cloth_number INTEGER NOT NULL,
+    cloth_photo TEXT NOT NULL,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_order_clothes_order
+        FOREIGN KEY (order_id)
+        REFERENCES clothes_orders(id)
+        ON DELETE CASCADE
+);
+
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(100) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    role VARCHAR(50) NOT NULL DEFAULT 'user',
+    password VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

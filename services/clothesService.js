@@ -3,6 +3,7 @@ const ClothesOrder = require("../models/ClothesOrder");
 const Customer = require("../models/Customer");
 const { uploadToDrive, deleteFromDrive } = require("./googleDriveService");
 const sequelize = require("../config/db");
+const OrderClothes = require("../models/OrderClothes");
 
 function getDrivePhotoUrls(fileId) {
   if (!fileId) {
@@ -50,6 +51,14 @@ async function getClothes({ search = "", status = "all" }) {
         attributes: ["id", "customer_name", "contact"],
         where: Object.keys(customerWhere).length ? customerWhere : undefined,
       },
+
+      // IMPORTANT: get all clothes belonging to the order
+      {
+        model: OrderClothes,
+        as: "clothes",
+        attributes: ["id", "order_id", "cloth_number", "cloth_photo"],
+        order: [["cloth_number", "ASC"]],
+      },
     ],
 
     order: [["delivery_date", "ASC"]],
@@ -61,7 +70,11 @@ async function getClothes({ search = "", status = "all" }) {
     return {
       ...data,
 
-      cloth_photo: getDrivePhotoUrls(data.cloth_photo),
+      // Multiple cloth photos
+      clothes: (data.clothes || []).map((cloth) => ({
+        ...cloth,
+        cloth_photo: getDrivePhotoUrls(cloth.cloth_photo),
+      })),
 
       note_photo: getDrivePhotoUrls(data.note_photo),
     };
@@ -69,15 +82,39 @@ async function getClothes({ search = "", status = "all" }) {
 }
 
 async function getClothesById(id) {
-  return ClothesOrder.findByPk(id, {
+  const order = await ClothesOrder.findByPk(id, {
     include: [
       {
         model: Customer,
         as: "customer",
         attributes: ["id", "customer_name", "contact"],
       },
+
+      {
+        model: OrderClothes,
+        as: "clothes",
+        attributes: ["id", "order_id", "cloth_number", "cloth_photo"],
+        order: [["cloth_number", "ASC"]],
+      },
     ],
   });
+
+  if (!order) {
+    return null;
+  }
+
+  const data = order.toJSON();
+
+  return {
+    ...data,
+
+    clothes: (data.clothes || []).map((cloth) => ({
+      ...cloth,
+      cloth_photo: getDrivePhotoUrls(cloth.cloth_photo),
+    })),
+
+    note_photo: getDrivePhotoUrls(data.note_photo),
+  };
 }
 
 async function createClothes(data) {
@@ -86,7 +123,7 @@ async function createClothes(data) {
     contact,
     remainder_date,
     delivery_date,
-    clothPhoto,
+    clothPhotos = [],
     notePhoto,
   } = data;
 
@@ -114,7 +151,6 @@ async function createClothes(data) {
         },
       );
     } else {
-      // Update existing customer name
       await customer.update(
         {
           customer_name,
@@ -129,7 +165,6 @@ async function createClothes(data) {
     const order = await ClothesOrder.create(
       {
         customer_id: customer.id,
-        cloth_photo: null,
         note_photo: null,
         remainder_date: remainder_date || null,
         delivery_date,
@@ -140,46 +175,86 @@ async function createClothes(data) {
       },
     );
 
-    // 4. Commit DB transaction
-    await transaction.commit();
+    // 4. Upload cloth photos
+    // Uploading to Drive is NOT transactional,
+    // but the database records below ARE transactional.
+    const clothRecords = [];
 
-    // 5. Upload photos to Google Drive
-    let clothPhotoId = null;
-    let notePhotoId = null;
+    for (let index = 0; index < clothPhotos.length; index++) {
+      const clothPhoto = clothPhotos[index];
 
-    if (clothPhoto) {
-      clothPhotoId = await uploadToDrive(clothPhoto, order.id, "cloth");
+      if (!clothPhoto) {
+        continue;
+      }
+
+      const clothPhotoId = await uploadToDrive(
+        clothPhoto,
+        order.id,
+        `order_${order.id}_cloth_${index + 1}`,
+      );
+
+      clothRecords.push({
+        order_id: order.id,
+        cloth_number: index + 1,
+        cloth_photo: clothPhotoId,
+      });
     }
+
+    // 5. Create all cloth records INSIDE transaction
+    if (clothRecords.length > 0) {
+      await OrderClothes.bulkCreate(clothRecords, {
+        transaction,
+      });
+    }
+
+    // 6. Upload note photo
 
     if (notePhoto) {
-      notePhotoId = await uploadToDrive(notePhoto, order.id, "note");
+      const notePhotoId = await uploadToDrive(
+        notePhoto,
+        order.id,
+        `order_${order.id}_note`,
+      );
+      await order.update(
+        {
+          note_photo: notePhotoId,
+        },
+        {
+          transaction,
+        },
+      );
     }
 
-    // 6. Save Drive file IDs
-    await order.update({
-      cloth_photo: clothPhotoId,
-      note_photo: notePhotoId,
-    });
+    // 7. Commit EVERYTHING together
+    await transaction.commit();
 
-    // 7. Return complete order
+    // 8. Fetch complete order
     const result = await ClothesOrder.findByPk(order.id, {
       include: [
         {
           model: Customer,
           as: "customer",
         },
+        {
+          model: OrderClothes,
+          as: "clothes",
+        },
       ],
     });
 
     const resultData = result.toJSON();
 
-    return {
-      ...resultData,
-      cloth_photo: getDrivePhotoUrls(resultData.cloth_photo),
-      note_photo: getDrivePhotoUrls(resultData.note_photo),
-    };
+    // 9. Convert Drive IDs to URLs
+    resultData.clothes = (resultData.clothes || []).map((cloth) => ({
+      ...cloth,
+      cloth_photo: getDrivePhotoUrls(cloth.cloth_photo),
+    }));
+
+    resultData.note_photo = getDrivePhotoUrls(resultData.note_photo);
+
+    return resultData;
   } catch (error) {
-    // Transaction may already be committed
+    // Rollback customer + order + order_clothes + note DB records
     if (!transaction.finished) {
       await transaction.rollback();
     }
@@ -189,36 +264,54 @@ async function createClothes(data) {
 }
 
 const updateClothes = async (id, data) => {
-  const order = await ClothesOrder.findByPk(id, {
-    include: [
-      {
-        model: Customer,
-        as: "customer",
-      },
-    ],
-  });
+  const transaction = await sequelize.transaction();
 
-  if (!order) {
-    throw new Error("Clothes order not found");
-  }
+  try {
+    // =========================================================
+    // 1. LOCK ONLY THE ORDER
+    //    IMPORTANT:
+    //    Do NOT include Customer here while using FOR UPDATE.
+    // =========================================================
 
-  const {
-    customer_name,
-    contact,
-    remainder_date,
-    delivery_date,
-    status,
-    clothPhoto,
-    notePhoto,
-    removeClothPhoto,
-    removeNotePhoto,
-  } = data;
+    const order = await ClothesOrder.findByPk(id, {
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
 
-  // =========================
-  // UPDATE CUSTOMER
-  // =========================
+    if (!order) {
+      throw new Error("Clothes order not found");
+    }
 
-  if (order.customer) {
+    const {
+      customer_name,
+      contact,
+      remainder_date,
+      delivery_date,
+      status,
+      clothPhotos = [],
+      notePhoto,
+      removeNotePhoto,
+    } = data;
+
+    // =========================================================
+    // 2. GET CUSTOMER SEPARATELY
+    // =========================================================
+
+    const customer = await Customer.findByPk(order.customer_id, {
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+
+    if (!customer) {
+      throw new Error(
+        `Customer ${order.customer_id} not found for order ${order.id}`,
+      );
+    }
+
+    // =========================================================
+    // 3. UPDATE CUSTOMER
+    // =========================================================
+
     const customerData = {};
 
     if (customer_name !== undefined) {
@@ -230,74 +323,178 @@ const updateClothes = async (id, data) => {
     }
 
     if (Object.keys(customerData).length > 0) {
-      await order.customer.update(customerData);
-    }
-  }
-
-  // =========================
-  // UPDATE ORDER
-  // =========================
-
-  const updateData = {};
-
-  if (remainder_date !== undefined) {
-    updateData.remainder_date = remainder_date || null;
-  }
-
-  if (delivery_date !== undefined) {
-    updateData.delivery_date = delivery_date;
-  }
-
-  if (status !== undefined && status !== "") {
-    const allowedStatuses = ["pending", "ready", "delivered"];
-
-    if (!allowedStatuses.includes(status)) {
-      throw new Error("Invalid status");
+      await customer.update(customerData, {
+        transaction,
+      });
     }
 
-    updateData.status = status;
+    // =========================================================
+    // 4. UPDATE ORDER
+    // =========================================================
+
+    const updateData = {};
+
+    if (remainder_date !== undefined) {
+      updateData.remainder_date = remainder_date || null;
+    }
+
+    if (delivery_date !== undefined) {
+      updateData.delivery_date = delivery_date;
+    }
+
+    if (status !== undefined && status !== "") {
+      const allowedStatuses = ["pending", "ready", "delivered"];
+
+      if (!allowedStatuses.includes(status)) {
+        throw new Error("Invalid status");
+      }
+
+      updateData.status = status;
+    }
+
+    if (Object.keys(updateData).length > 0) {
+      await order.update(updateData, {
+        transaction,
+      });
+    }
+
+    // =========================================================
+    // 5. UPDATE ONLY CHANGED CLOTH PHOTOS
+    // =========================================================
+
+    if (Array.isArray(clothPhotos) && clothPhotos.length > 0) {
+      for (const cloth of clothPhotos) {
+        const clothNumber = Number(cloth.cloth_number);
+        const file = cloth.file;
+
+        if (!Number.isInteger(clothNumber) || clothNumber < 1) {
+          throw new Error(`Invalid cloth number: ${cloth.cloth_number}`);
+        }
+
+        if (!file) {
+          continue;
+        }
+
+        console.log(`Updating cloth ${clothNumber} for order ${order.id}`);
+
+        // -----------------------------------------------------
+        // Check that this cloth already exists
+        // -----------------------------------------------------
+
+        const existingCloth = await OrderClothes.findOne({
+          where: {
+            order_id: order.id,
+            cloth_number: clothNumber,
+          },
+          transaction,
+          lock: transaction.LOCK.UPDATE,
+        });
+
+        if (!existingCloth) {
+          throw new Error(
+            `Cloth ${clothNumber} not found for order ${order.id}`,
+          );
+        }
+
+        // -----------------------------------------------------
+        // Upload replacement photo to Google Drive
+        // -----------------------------------------------------
+
+        const newClothPhoto = await uploadToDrive(
+          file,
+          order.id,
+          `order_${order.id}_cloth_${clothNumber}`,
+        );
+
+        // -----------------------------------------------------
+        // Update only this cloth row
+        // -----------------------------------------------------
+
+        await existingCloth.update(
+          {
+            cloth_photo: newClothPhoto,
+          },
+          {
+            transaction,
+          },
+        );
+
+        console.log(`Cloth ${clothNumber} updated successfully`);
+      }
+    }
+
+    // =========================================================
+    // 6. NOTE PHOTO
+    // =========================================================
+
+    if (notePhoto) {
+      console.log(`Updating note photo for order ${order.id}`);
+
+      const newNotePhoto = await uploadToDrive(
+        notePhoto,
+        order.id,
+        `order_${order.id}_note`,
+      );
+
+      await order.update(
+        {
+          note_photo: newNotePhoto,
+        },
+        {
+          transaction,
+        },
+      );
+    } else if (removeNotePhoto === "true") {
+      console.log(`Removing note photo for order ${order.id}`);
+
+      await order.update(
+        {
+          note_photo: null,
+        },
+        {
+          transaction,
+        },
+      );
+    }
+
+    // =========================================================
+    // 7. COMMIT
+    // =========================================================
+
+    await transaction.commit();
+
+    console.log(`Order ${order.id} updated successfully`);
+
+    // =========================================================
+    // 8. FETCH COMPLETE UPDATED ORDER
+    //    This query is AFTER the transaction and does NOT lock.
+    // =========================================================
+
+    const updatedOrder = await ClothesOrder.findByPk(id, {
+      include: [
+        {
+          model: Customer,
+          as: "customer",
+        },
+        {
+          model: OrderClothes,
+          as: "clothes",
+          separate: true,
+          order: [["cloth_number", "ASC"]],
+        },
+      ],
+    });
+
+    return updatedOrder;
+  } catch (error) {
+    console.error("Update clothes service error:", error);
+
+    if (!transaction.finished) {
+      await transaction.rollback();
+    }
+
+    throw error;
   }
-
-  // =========================
-  // CLOTH PHOTO
-  // =========================
-
-  if (clothPhoto) {
-    const newClothPhoto = await uploadToDrive(clothPhoto, order.id, "cloth");
-
-    updateData.cloth_photo = newClothPhoto;
-  } else if (removeClothPhoto === "true") {
-    updateData.cloth_photo = null;
-  }
-
-  // =========================
-  // NOTE PHOTO
-  // =========================
-
-  if (notePhoto) {
-    const newNotePhoto = await uploadToDrive(notePhoto, order.id, "note");
-
-    updateData.note_photo = newNotePhoto;
-  } else if (removeNotePhoto === "true") {
-    updateData.note_photo = null;
-  }
-
-  // =========================
-  // SAVE ORDER
-  // =========================
-
-  if (Object.keys(updateData).length > 0) {
-    await order.update(updateData);
-  }
-
-  return await ClothesOrder.findByPk(id, {
-    include: [
-      {
-        model: Customer,
-        as: "customer",
-      },
-    ],
-  });
 };
 
 async function updateClothesStatus(id, status) {

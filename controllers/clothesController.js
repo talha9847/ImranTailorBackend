@@ -148,9 +148,17 @@ async function getClothesById(req, res) {
     });
   }
 }
+
 const createClothes = async (req, res) => {
   try {
-    const { customer_name, contact, remainder_date, delivery_date } = req.body;
+    const {
+      customer_name,
+      contact,
+      remainder_date,
+      delivery_date,
+      status,
+      cloth_count,
+    } = req.body;
 
     if (!customer_name || !contact || !delivery_date) {
       return res.status(400).json({
@@ -159,21 +167,67 @@ const createClothes = async (req, res) => {
       });
     }
 
-    const clothPhoto = req.files?.cloth_photo?.[0] || null;
+    // =========================================================
+    // ALL UPLOADED FILES
+    // =========================================================
 
-    const notePhoto = req.files?.note_photo?.[0] || null;
+    const files = req.files || [];
+
+    // =========================================================
+    // CLOTH PHOTOS
+    //
+    // CREATE request uses repeated:
+    // cloth_photos
+    //
+    // Example:
+    // cloth_photos
+    // cloth_photos
+    // cloth_photos
+    // =========================================================
+
+    const clothFiles = files.filter(
+      (file) => file.fieldname === "cloth_photos",
+    );
+
+    // =========================================================
+    // NOTE PHOTO
+    // =========================================================
+
+    const notePhoto =
+      files.find((file) => file.fieldname === "note_photo") || null;
+
+    // =========================================================
+    // DEBUG
+    // =========================================================
 
     console.log("CREATE FILES:", {
-      clothPhoto: !!clothPhoto,
+      clothPhotos: clothFiles.length,
       notePhoto: !!notePhoto,
+      clothCount: cloth_count,
     });
+
+    console.log(
+      "CREATE FILE DETAILS:",
+      files.map((file) => ({
+        fieldname: file.fieldname,
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size,
+      })),
+    );
+
+    // =========================================================
+    // CREATE CLOTHES
+    // =========================================================
 
     const clothes = await clothesService.createClothes({
       customer_name,
       contact,
       remainder_date,
       delivery_date,
-      clothPhoto,
+      status,
+      cloth_count: Number(cloth_count || 1),
+      clothPhotos: clothFiles,
       notePhoto,
     });
 
@@ -190,7 +244,7 @@ const createClothes = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: error.message || "Unable to create clothes",
     });
   }
 };
@@ -203,21 +257,48 @@ const updateClothes = async (req, res) => {
       remainder_date,
       delivery_date,
       status,
-      removeClothPhoto,
       removeNotePhoto,
     } = req.body;
 
-    const clothPhoto = req.files?.cloth_photo?.[0] || null;
+    // =========================
+    // GET ONLY UPLOADED CLOTH PHOTOS
+    // =========================
 
-    const notePhoto = req.files?.note_photo?.[0] || null;
+    const clothPhotos = [];
+
+    for (const file of req.files || []) {
+      if (file.fieldname.startsWith("cloth_photos[")) {
+        const match = file.fieldname.match(/^cloth_photos\[(\d+)\]$/);
+
+        if (match) {
+          clothPhotos.push({
+            cloth_number: Number(match[1]),
+            file,
+          });
+        }
+      }
+    }
+
+    // =========================
+    // NOTE PHOTO
+    // =========================
+
+    const notePhoto =
+      req.files?.find((file) => file.fieldname === "note_photo") || null;
 
     console.log("UPDATE FILES:", {
       id: req.params.id,
-      clothPhoto: !!clothPhoto,
+
+      clothPhotos: clothPhotos.map((item) => item.cloth_number),
+
       notePhoto: !!notePhoto,
-      removeClothPhoto,
+
       removeNotePhoto,
     });
+
+    // =========================
+    // UPDATE SERVICE
+    // =========================
 
     const clothes = await clothesService.updateClothes(req.params.id, {
       customer_name,
@@ -225,9 +306,8 @@ const updateClothes = async (req, res) => {
       remainder_date,
       delivery_date,
       status,
-      clothPhoto,
+      clothPhotos,
       notePhoto,
-      removeClothPhoto,
       removeNotePhoto,
     });
 

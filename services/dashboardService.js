@@ -1,9 +1,14 @@
 const ClothesOrder = require("../models/ClothesOrder");
 const Customer = require("../models/Customer");
+const OrderClothes = require("../models/OrderClothes");
 const { getDrivePhotoUrls } = require("./clothesService");
 
 async function getDashboardData() {
   try {
+    // =========================================================
+    // GET ALL ORDERS
+    // =========================================================
+
     const clothes = await ClothesOrder.findAll({
       order: [["id", "DESC"]],
 
@@ -13,8 +18,19 @@ async function getDashboardData() {
           as: "customer",
           attributes: ["id", "customer_name", "contact"],
         },
+        {
+          model: OrderClothes,
+          as: "clothes",
+          attributes: ["id", "order_id", "cloth_number", "cloth_photo"],
+          separate: true,
+          order: [["cloth_number", "ASC"]],
+        },
       ],
     });
+
+    // =========================================================
+    // SUMMARY
+    // =========================================================
 
     const activeClothes = clothes.filter((item) => item.status !== "delivered");
 
@@ -22,9 +38,10 @@ async function getDashboardData() {
 
     const ready = clothes.filter((item) => item.status === "ready");
 
-    // -----------------------------
+    // =========================================================
     // TODAY YYYY-MM-DD
-    // -----------------------------
+    // =========================================================
+
     const today = new Date();
 
     const todayValue = [
@@ -33,13 +50,18 @@ async function getDashboardData() {
       String(today.getDate()).padStart(2, "0"),
     ].join("-");
 
+    // =========================================================
+    // REMINDER ARRAYS
+    // =========================================================
+
     const passed = [];
     const todayReminders = [];
     const upcoming = [];
 
-    // -----------------------------
+    // =========================================================
     // BUILD REMINDER DATA
-    // -----------------------------
+    // =========================================================
+
     clothes.forEach((item) => {
       if (!item.remainder_date) {
         return;
@@ -49,30 +71,49 @@ async function getDashboardData() {
 
       const customer = item.customer || {};
 
+      // -------------------------------------------------------
+      // CONVERT ALL CLOTH PHOTOS
+      // -------------------------------------------------------
+
+      const itemData = item.toJSON();
+
+      const clothPhotos = (itemData.clothes || [])
+        .sort((a, b) => Number(a.cloth_number) - Number(b.cloth_number))
+        .map((cloth) => ({
+          ...cloth,
+          cloth_photo: getDrivePhotoUrls(cloth.cloth_photo),
+        }));
+
+      // -------------------------------------------------------
+      // REMINDER ITEM
+      // -------------------------------------------------------
+
       const reminderItem = {
         id: item.id,
 
         customer_id: customer.id || null,
 
-        customer_name: customer.customer_name || item.customer_name || "",
+        customer_name: customer.customer_name || itemData.customer_name || "",
 
-        contact: customer.contact || item.contact || "",
+        contact: customer.contact || itemData.contact || "",
 
-        // IMPORTANT:
-        // These are converted into the same photo object
-        // used by Clothes.jsx
-        cloth_photo: getDrivePhotoUrls(item.cloth_photo),
+        // ALL CLOTHES
+        clothes: clothPhotos,
+
+        // NOTE PHOTO
         note_photo: getDrivePhotoUrls(item.note_photo),
 
         remainder_date: item.remainder_date,
+
         delivery_date: item.delivery_date,
 
         status: item.status,
       };
 
-      // ---------------------------------
+      // =======================================================
       // PASSED + STILL PENDING
-      // ---------------------------------
+      // =======================================================
+
       if (reminderDate < todayValue && item.status === "pending") {
         passed.push({
           ...reminderItem,
@@ -82,10 +123,11 @@ async function getDashboardData() {
         return;
       }
 
-      // ---------------------------------
+      // =======================================================
       // REMINDER IS TODAY
       // Show every non-delivered order
-      // ---------------------------------
+      // =======================================================
+
       if (reminderDate === todayValue && item.status !== "delivered") {
         todayReminders.push({
           ...reminderItem,
@@ -95,11 +137,10 @@ async function getDashboardData() {
         return;
       }
 
-      // ---------------------------------
+      // =======================================================
       // UPCOMING
-      // Keep this for dashboard count
-      // but don't display it in reminder list
-      // ---------------------------------
+      // =======================================================
+
       if (reminderDate > todayValue && item.status !== "delivered") {
         upcoming.push({
           ...reminderItem,
@@ -108,9 +149,9 @@ async function getDashboardData() {
       }
     });
 
-    // -----------------------------
-    // SORT
-    // -----------------------------
+    // =========================================================
+    // SORT PASSED
+    // =========================================================
 
     passed.sort((a, b) => {
       return String(a.remainder_date)
@@ -118,11 +159,19 @@ async function getDashboardData() {
         .localeCompare(String(b.remainder_date).slice(0, 10));
     });
 
+    // =========================================================
+    // SORT TODAY
+    // =========================================================
+
     todayReminders.sort((a, b) => {
       return String(a.delivery_date || "")
         .slice(0, 10)
         .localeCompare(String(b.delivery_date || "").slice(0, 10));
     });
+
+    // =========================================================
+    // SORT UPCOMING
+    // =========================================================
 
     upcoming.sort((a, b) => {
       return String(a.remainder_date)
@@ -130,32 +179,36 @@ async function getDashboardData() {
         .localeCompare(String(b.remainder_date).slice(0, 10));
     });
 
-    // -----------------------------
+    // =========================================================
     // RESPONSE
-    // -----------------------------
+    // =========================================================
 
     return {
       summary: {
         totalClothes: activeClothes.length,
+
         pending: pending.length,
+
         ready: ready.length,
 
         passedReminders: passed.length,
+
         todayReminders: todayReminders.length,
+
         upcomingReminders: upcoming.length,
       },
 
       reminders: {
         passed,
+
         today: todayReminders,
 
-        // We keep this for the summary count,
-        // but Dashboard.jsx won't display these.
         upcoming,
       },
     };
   } catch (error) {
     console.error("Dashboard service error:", error);
+
     throw error;
   }
 }

@@ -1,6 +1,10 @@
 const dashboardService = require("../services/dashboardService");
 
-async function getDashboard(req, res) {
+// ========================================
+// GET DASHBOARD
+// ========================================
+
+const getDashboard = async (req, res) => {
   try {
     const dashboard = await dashboardService.getDashboardData();
 
@@ -14,12 +18,12 @@ async function getDashboard(req, res) {
       error.response?.data || error.message,
     );
 
-    return res.status(error.statusCode || 500).json({
+    return res.status(500).json({
       success: false,
-      message: error.message || "Failed to get dashboard data",
+      message: error.message || "Unable to load dashboard",
     });
   }
-}
+};
 
 module.exports = {
   getDashboard,

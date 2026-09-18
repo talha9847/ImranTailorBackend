@@ -6,7 +6,7 @@ const inventoryRoutes = require("./routes/inventoryRoutes");
 const dailyInventoryUsageRoutes = require("./routes/dailyInventoryUsageRoutes");
 const clothesRoutes = require("./routes/clothesRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
-
+const authRoutes = require("./routes/authRoutes");
 const app = express();
 
 app.use(

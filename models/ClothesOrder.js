@@ -15,11 +15,6 @@ const ClothesOrder = sequelize.define(
       allowNull: false,
     },
 
-    cloth_photo: {
-      type: DataTypes.TEXT,
-      allowNull: true,
-    },
-
     note_photo: {
       type: DataTypes.TEXT,
       allowNull: true,
