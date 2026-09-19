@@ -8,6 +8,8 @@ const clothesRoutes = require("./routes/clothesRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const authRoutes = require("./routes/authRoutes");
 const app = express();
+const cookieParser = require("cookie-parser");
+app.use(cookieParser());
 
 app.use(
   cors({
@@ -18,12 +20,12 @@ app.use(
     credentials: true,
   }),
 );
-
 app.use(express.json());
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/inventory-usage", dailyInventoryUsageRoutes);
 app.use("/api/clothes", clothesRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/auth", authRoutes);
 app.get("/", (req, res) => {
   res.status(200).json({ message: "server is running" });
 });
