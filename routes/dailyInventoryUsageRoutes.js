@@ -20,5 +20,6 @@ router.get("/getUsageHistory", middleware, controller.getUsageHistory);
 
 // Save usage item
 router.post("/saveUsageItem", middleware, controller.saveUsageItem);
+router.post("/revertUsageItem", middleware, controller.revertUsageItem);
 
 module.exports = router;

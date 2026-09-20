@@ -121,9 +121,38 @@ async function saveUsageItem(req, res) {
   }
 }
 
+const revertUsageItem = async (req, res) => {
+  try {
+    const { usage_item_id } = req.body;
+
+    if (!usage_item_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Usage item ID is required",
+      });
+    }
+
+    const result = await service.revertUsageItem(usage_item_id);
+
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result,
+    });
+  } catch (error) {
+    console.error("Revert usage item error:", error);
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || "Failed to revert usage item",
+    });
+  }
+};
+
 module.exports = {
   getInventoryProducts,
   getUsageByDate,
   getUsageHistory,
   saveUsageItem,
+  revertUsageItem,
 };
