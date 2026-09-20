@@ -360,6 +360,86 @@ async function updateClothesStatus(req, res) {
   }
 }
 
+async function getAllCustomers(req, res) {
+  try {
+    const { search = "" } = req.query;
+
+    const customers = await clothesService.getAllCustomers({
+      search,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Customers fetched successfully",
+      data: customers,
+    });
+  } catch (error) {
+    console.error("Get all customers error:", error);
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || "Failed to fetch customers",
+    });
+  }
+}
+
+async function getCustomerOrders(req, res) {
+  try {
+    const { id } = req.params;
+
+    const customerId = Number(id);
+
+    if (!Number.isInteger(customerId) || customerId <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid customer ID",
+      });
+    }
+
+    const orders = await clothesService.getCustomerOrders(customerId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Customer orders fetched successfully",
+      data: orders,
+    });
+  } catch (error) {
+    console.error("Get customer orders error:", error);
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || "Failed to fetch customer orders",
+    });
+  }
+}
+
+async function getOrderById(req, res) {
+  try {
+    const orderId = Number(req.params.id);
+
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order ID",
+      });
+    }
+
+    const order = await clothesService.getOrderById(orderId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Order fetched successfully",
+      data: order,
+    });
+  } catch (error) {
+    console.error("Get order by ID error:", error);
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || "Failed to fetch order",
+    });
+  }
+}
 module.exports = {
   getClothes,
   getClothesById,
@@ -367,4 +447,7 @@ module.exports = {
   updateClothes,
   updateClothesStatus,
   getClothesPhoto,
+  getAllCustomers,
+  getCustomerOrders,
+  getOrderById,
 };

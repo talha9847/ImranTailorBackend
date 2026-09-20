@@ -29,4 +29,12 @@ router.patch(
   clothesController.updateClothesStatus,
 );
 router.get("/photo/:fileId", middleware, clothesController.getClothesPhoto);
+router.get("/getAllCustomers", middleware, clothesController.getAllCustomers);
+router.get(
+  "/:id/getCustomerOrders",
+  middleware,
+  clothesController.getCustomerOrders,
+);
+
+router.get("/getOrderById/:id", clothesController.getOrderById);
 module.exports = router;

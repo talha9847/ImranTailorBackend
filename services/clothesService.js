@@ -12,8 +12,8 @@ function getDrivePhotoUrls(fileId) {
 
   return {
     id: fileId,
-    thumbnail: `https://drive.google.com/thumbnail?id=${fileId}&sz=w300`,
-    url: `https://drive.google.com/uc?export=view&id=${fileId}`,
+    thumbnail: `/api/clothes/photo/${fileId}`,
+    url: `/api/clothes/photo/${fileId}`,
   };
 }
 
@@ -516,6 +516,110 @@ async function updateClothesStatus(id, status) {
     throw error;
   }
 }
+
+async function getAllCustomers({ search = "" } = {}) {
+  const where = {};
+
+  if (search.trim()) {
+    const searchValue = search.trim();
+
+    where[Op.or] = [
+      {
+        customer_name: {
+          [Op.iLike]: `%${searchValue}%`,
+        },
+      },
+      {
+        contact: {
+          [Op.iLike]: `%${searchValue}%`,
+        },
+      },
+    ];
+  }
+
+  const customers = await Customer.findAll({
+    where,
+
+    attributes: ["id", "customer_name", "contact"],
+
+    order: [["customer_name", "ASC"]],
+  });
+
+  return customers;
+}
+
+async function getCustomerOrders(customerId) {
+  const customer = await Customer.findByPk(customerId, {
+    attributes: ["id"],
+  });
+
+  if (!customer) {
+    const error = new Error("Customer not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const orders = await ClothesOrder.findAll({
+    where: {
+      customer_id: customerId,
+    },
+
+    attributes: ["id"],
+
+    order: [["id", "DESC"]],
+  });
+
+  return orders;
+}
+
+async function getOrderById(orderId) {
+  const id = Number(orderId);
+
+  if (!Number.isInteger(id) || id <= 0) {
+    const error = new Error("Invalid order ID");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const order = await ClothesOrder.findByPk(id, {
+    include: [
+      {
+        model: Customer,
+        as: "customer",
+      },
+
+      {
+        model: OrderClothes,
+        as: "clothes",
+        separate: true,
+        order: [["cloth_number", "ASC"]],
+      },
+    ],
+  });
+
+  if (!order) {
+    const error = new Error("Clothes order not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // Convert Sequelize instance to plain object
+  const orderData = order.toJSON();
+
+  // Convert every cloth photo from Drive ID
+  // to { id, thumbnail, url }
+  orderData.clothes = (orderData.clothes || [])
+    .sort((a, b) => Number(a.cloth_number || 0) - Number(b.cloth_number || 0))
+    .map((cloth) => ({
+      ...cloth,
+      cloth_photo: getDrivePhotoUrls(cloth.cloth_photo),
+    }));
+
+  // Convert note photo as well
+  orderData.note_photo = getDrivePhotoUrls(orderData.note_photo);
+
+  return orderData;
+}
 module.exports = {
   getClothes,
   getClothesById,
@@ -523,4 +627,7 @@ module.exports = {
   updateClothes,
   updateClothesStatus,
   getDrivePhotoUrls,
+  getAllCustomers,
+  getCustomerOrders,
+  getOrderById,
 };
