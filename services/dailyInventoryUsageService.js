@@ -3,6 +3,7 @@ const {
   DailyInventoryUsage,
   DailyInventoryUsageItem,
 } = require("../models/association");
+const { Op } = require("sequelize");
 
 const sequelize = require("../config/db");
 
@@ -430,10 +431,190 @@ async function revertUsageItem(usageItemId) {
     throw error;
   }
 }
+
+async function getSellingHistoryByDateRange({ start_date, end_date }) {
+  if (!start_date || !end_date) {
+    const error = new Error("Start date and end date are required");
+
+    error.statusCode = 400;
+
+    throw error;
+  }
+
+  const startDate = String(start_date);
+  const endDate = String(end_date);
+
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+  if (!dateRegex.test(startDate) || !dateRegex.test(endDate)) {
+    const error = new Error("Dates must be in YYYY-MM-DD format");
+
+    error.statusCode = 400;
+
+    throw error;
+  }
+
+  // -------------------------------------------------------
+  // VALIDATE DATE RANGE
+  // -------------------------------------------------------
+
+  if (startDate > endDate) {
+    const error = new Error("Start date cannot be after end date");
+
+    error.statusCode = 400;
+
+    throw error;
+  }
+
+  // -------------------------------------------------------
+  // GET HISTORY
+  // -------------------------------------------------------
+
+  const history = await DailyInventoryUsage.findAll({
+    where: {
+      usage_date: {
+        [Op.between]: [startDate, endDate],
+      },
+    },
+
+    include: [
+      {
+        model: DailyInventoryUsageItem,
+        as: "items",
+
+        include: [
+          {
+            model: Inventory,
+            as: "inventory",
+
+            attributes: [
+              "id",
+              "cloth_name",
+              "quantity",
+              "buying_price",
+              "selling_price",
+            ],
+          },
+        ],
+      },
+    ],
+
+    order: [["usage_date", "DESC"]],
+  });
+
+  // -------------------------------------------------------
+  // FORMAT HISTORY
+  // -------------------------------------------------------
+
+  const result = history.map((usage) => {
+    const items = (usage.items || []).map((item) => {
+      const quantity = Number(item.quantity || 0);
+
+      const sellingPrice = Number(item.selling_price || 0);
+
+      const totalAmount =
+        item.total_amount !== null && item.total_amount !== undefined
+          ? Number(item.total_amount)
+          : quantity * sellingPrice;
+
+      return {
+        id: item.id,
+
+        usage_id: item.usage_id,
+
+        inventory_id: item.inventory_id,
+
+        quantity,
+
+        buying_price: Number(item.buying_price || 0),
+
+        selling_price: sellingPrice,
+
+        total_amount: totalAmount,
+
+        created_at: item.created_at,
+
+        inventory: item.inventory
+          ? {
+              id: item.inventory.id,
+
+              cloth_name: item.inventory.cloth_name,
+
+              quantity: Number(item.inventory.quantity || 0),
+
+              buying_price: Number(item.inventory.buying_price || 0),
+
+              selling_price: Number(item.inventory.selling_price || 0),
+            }
+          : null,
+      };
+    });
+
+    // -----------------------------------------------------
+    // DAILY TOTAL SELLING AMOUNT
+    // -----------------------------------------------------
+
+    const totalSellingAmount = items.reduce(
+      (sum, item) => sum + Number(item.total_amount || 0),
+      0,
+    );
+
+    // -----------------------------------------------------
+    // DAILY TOTAL CLOTHES
+    // -----------------------------------------------------
+
+    const totalItems = items.reduce(
+      (sum, item) => sum + Number(item.quantity || 0),
+      0,
+    );
+
+    return {
+      id: usage.id,
+
+      usage_date: usage.usage_date,
+
+      total_items: totalItems,
+
+      total_selling_amount: totalSellingAmount,
+
+      items,
+    };
+  });
+
+  // -------------------------------------------------------
+  // GRAND TOTAL
+  // -------------------------------------------------------
+
+  const grandTotalItems = result.reduce(
+    (sum, day) => sum + Number(day.total_items || 0),
+    0,
+  );
+
+  const grandTotalSellingAmount = result.reduce(
+    (sum, day) => sum + Number(day.total_selling_amount || 0),
+    0,
+  );
+
+  return {
+    start_date: startDate,
+
+    end_date: endDate,
+
+    days: result,
+
+    total_days: result.length,
+
+    total_items: grandTotalItems,
+
+    total_selling_amount: grandTotalSellingAmount,
+  };
+}
+
 module.exports = {
   getInventoryProducts,
   getUsageByDate,
   getUsageHistory,
   saveUsageItem,
   revertUsageItem,
+  getSellingHistoryByDateRange,
 };

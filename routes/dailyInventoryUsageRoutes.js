@@ -22,4 +22,9 @@ router.get("/getUsageHistory", middleware, controller.getUsageHistory);
 router.post("/saveUsageItem", middleware, controller.saveUsageItem);
 router.post("/revertUsageItem", middleware, controller.revertUsageItem);
 
+router.get(
+  "/getSellingHistoryByDateRange",middleware,
+  controller.getSellingHistoryByDateRange,
+);
+
 module.exports = router;

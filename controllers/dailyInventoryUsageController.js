@@ -149,10 +149,38 @@ const revertUsageItem = async (req, res) => {
   }
 };
 
+const getSellingHistoryByDateRange = async (req, res) => {
+  try {
+    const { start_date, end_date } = req.query;
+
+    const result = await service.getSellingHistoryByDateRange({
+      start_date,
+      end_date,
+    });
+
+    return res.status(200).json({
+      success: true,
+
+      message: "Selling history fetched successfully",
+
+      data: result,
+    });
+  } catch (error) {
+    console.error("Get selling history error:", error);
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+
+      message: error.message || "Failed to fetch selling history",
+    });
+  }
+};
+
 module.exports = {
   getInventoryProducts,
   getUsageByDate,
   getUsageHistory,
   saveUsageItem,
   revertUsageItem,
+  getSellingHistoryByDateRange,
 };
