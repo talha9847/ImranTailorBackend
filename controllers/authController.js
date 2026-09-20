@@ -40,7 +40,6 @@ function logout(req, res) {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    
   });
 
   return res.status(200).json({
@@ -49,7 +48,29 @@ function logout(req, res) {
   });
 }
 
+async function me(req, res) {
+  try {
+    const token = req.cookies?.token;
+    if (!token) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Authentication required" });
+    }
+    const decoded = await jwtService.verifyJwt(token);
+    if (!decoded) {
+      return res
+        .status(401)
+        .json({ success: false, message: "User not found" });
+    }
+    return res.status(200).json({ success: true, user: decoded });
+  } catch (error) {
+    return res
+      .status(401)
+      .json({ success: false, message: "Invalid or expired session" });
+  }
+}
 module.exports = {
   login,
   logout,
+  me,
 };
